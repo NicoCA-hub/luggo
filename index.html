@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LUGGO</title>
+<meta name="apple-mobile-web-app-title" content="LUGGO">
+<meta name="application-name" content="LUGGO">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+:root{
+  --bg:#f6f3ee; --card:#fff; --ink:#1f2328; --muted:#6b7280; --line:#e4dfd6;
+  --accent:#c2410c; --accent-ink:#fff;
+  --pendiente:#d98a00; --visitado:#2b6cb0; --volveria:#2f855a; --descartado:#8a8f98;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink);background:var(--bg);display:flex;flex-direction:column}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer;border:1px solid var(--line);background:var(--card);border-radius:8px;padding:8px 12px}
+button:hover{border-color:#cfc8bb}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+button.danger{color:#b42318;border-color:#f1c7c2}
+button.ghost{border-color:transparent;background:transparent}
+input,select,textarea{border:1px solid var(--line);border-radius:8px;padding:8px 10px;background:#fff;width:100%}
+textarea{resize:vertical;min-height:64px}
+label{display:block;font-size:13px;color:var(--muted);margin:10px 0 4px}
+
+header{display:flex;gap:8px;align-items:center;padding:10px 12px;background:var(--card);border-bottom:1px solid var(--line)}
+.brand{font-weight:700;font-size:18px;white-space:nowrap;margin-right:4px}
+.brand span{color:var(--accent)}
+header input[type=search]{flex:1;min-width:0}
+header button{white-space:nowrap}
+
+main{flex:1;display:grid;grid-template-columns:390px 1fr;min-height:0}
+#panel{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--line);background:var(--bg)}
+.filters{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:10px 12px;border-bottom:1px solid var(--line)}
+.filters select{padding:6px 8px;font-size:14px}
+.filters .wide{grid-column:1/-1}
+.count{padding:8px 14px;font-size:13px;color:var(--muted)}
+#list{flex:1;overflow:auto;padding:0 12px 12px}
+#map{min-height:0;z-index:0}
+
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-bottom:8px;cursor:pointer}
+.card:hover{border-color:#cfc8bb}
+.card h3{margin:0 0 4px;font-size:16px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.meta{font-size:13px;color:var(--muted)}
+.badge{display:inline-block;font-size:12px;font-weight:600;padding:2px 8px;border-radius:999px;color:#fff;background:var(--c,#888)}
+.badge.soft{background:#efe9df;color:var(--ink);font-weight:500}
+.rating{font-weight:700;color:#b45309}
+.empty{padding:28px 16px;text-align:center;color:var(--muted)}
+
+.pin{width:26px;height:26px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:var(--c);border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.4)}
+
+.tabs{display:none}
+
+#overlay{position:fixed;inset:0;background:rgba(20,18,15,.45);display:none;z-index:1000;align-items:center;justify-content:center;padding:16px}
+#overlay.open{display:flex}
+#sheet{background:var(--bg);border-radius:14px;width:min(640px,100%);max-height:100%;overflow:auto;padding:18px}
+.sheet-head{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:6px}
+.sheet-head h2{margin:0;font-size:20px}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}
+.chip{border-radius:999px;padding:5px 12px;font-size:14px}
+.chip.on{background:var(--c);border-color:var(--c);color:#fff;font-weight:600}
+.section{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;margin-top:12px}
+.section h4{margin:0 0 8px;font-size:15px}
+.visit{border-top:1px solid var(--line);padding:10px 0}
+.visit:first-of-type{border-top:0}
+.cats{display:grid;grid-template-columns:1fr 1fr;gap:2px 12px;font-size:13px;color:var(--muted);margin:4px 0}
+.photos{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.photos img{width:84px;height:84px;object-fit:cover;border-radius:8px;border:1px solid var(--line);cursor:zoom-in;background:#eee}
+.stars{display:flex;gap:2px}
+.stars button{border:0;background:transparent;padding:2px 4px;font-size:24px;line-height:1;color:#d6cfc2}
+.stars button.on{color:#e08a00}
+.starrow{display:flex;justify-content:space-between;align-items:center;padding:2px 0}
+#mini{height:220px;border-radius:10px;border:1px solid var(--line);margin-top:6px}
+.results{margin-top:6px}
+.results button{display:block;width:100%;text-align:left;margin-bottom:4px;font-size:14px}
+.hint{font-size:12.5px;color:var(--muted);margin-top:4px}
+a{color:var(--accent)}
+#viewer{position:fixed;inset:0;background:rgba(0,0,0,.88);display:none;z-index:2000;align-items:center;justify-content:center;cursor:zoom-out}
+#viewer.open{display:flex}
+#viewer img{max-width:96%;max-height:96%}
+#toast{position:fixed;left:50%;bottom:76px;transform:translateX(-50%);background:#1f2328;color:#fff;padding:8px 14px;border-radius:8px;font-size:14px;display:none;z-index:3000}
+
+@media (max-width:800px){
+  main{grid-template-columns:1fr}
+  body[data-tab=map] #panel{display:none}
+  body[data-tab=list] #map{display:none}
+  .tabs{display:grid;grid-template-columns:1fr 1fr;background:var(--card);border-top:1px solid var(--line)}
+  .tabs button{border:0;border-radius:0;padding:12px;background:transparent;color:var(--muted)}
+  .tabs button.on{color:var(--accent);font-weight:700}
+  .brand{display:none}
+  #panel{border-right:0}
+  #overlay{padding:0;align-items:flex-end}
+  #sheet{border-radius:14px 14px 0 0;max-height:94%}
+  .lbl{display:none}
+}
+</style>
+</head>
+<body data-tab="map">
+<header>
+  <div class="brand">LUG<span>GO</span></div>
+  <input id="q" type="search" placeholder="Buscar por nombre, cocina o etiqueta">
+  <button data-act="add-link" title="Guardar un enlace de TikTok o Instagram">＋ <span class="lbl">Enlace</span>🔗</button>
+  <button class="primary" data-act="add-place">＋ <span class="lbl">Lugar</span>📍</button>
+  <button data-act="menu" title="Copia de seguridad">⋯</button>
+</header>
+<main>
+  <aside id="panel">
+    <div class="filters">
+      <select id="fStatus"></select>
+      <select id="fCuisine"></select>
+      <select id="fPrice"></select>
+      <select id="fRating">
+        <option value="">Cualquier calificación</option>
+        <option value="3">3 o más</option>
+        <option value="4">4 o más</option>
+        <option value="4.5">4.5 o más</option>
+      </select>
+      <select id="fSort" class="wide">
+        <option value="added">Ordenar: agregados recientemente</option>
+        <option value="recent">Ordenar: visita más reciente</option>
+        <option value="oldest">Ordenar: visita más antigua</option>
+        <option value="best">Ordenar: mejor calificación</option>
+        <option value="worst">Ordenar: peor calificación</option>
+        <option value="name">Ordenar: nombre (A-Z)</option>
+      </select>
+    </div>
+    <div class="count" id="count"></div>
+    <div id="list"></div>
+  </aside>
+  <div id="map"></div>
+</main>
+<nav class="tabs">
+  <button data-act="tab" data-tab="map" class="on">Mapa</button>
+  <button data-act="tab" data-tab="list">Lista</button>
+</nav>
+<div id="overlay"><div id="sheet"></div></div>
+<div id="viewer"><img alt=""></div>
+<div id="toast"></div>
+<input type="file" id="importFile" accept="application/json,.json" hidden>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>window.L || document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"><\/script>');</script>
+<script>
+/* ============ Configuración ============ */
+// Cada tipo de lugar define sus propias categorías de calificación.
+// Para agregar "experiencias" u otros lugares más adelante, basta con sumar una entrada aquí.
+const TYPES = {
+  restaurante: { label: 'Restaurante', cats: [['comida','Comida'],['servicio','Servicio'],['ambiente','Ambiente'],['precio','Calidad-precio']] }
+};
+const STATUS = {
+  pendiente:  { label: 'Pendiente',  color: '#d98a00' },
+  visitado:   { label: 'Visitado',   color: '#2b6cb0' },
+  volveria:   { label: 'Volvería',   color: '#2f855a' },
+  descartado: { label: 'Descartado', color: '#8a8f98' }
+};
+const PRICES = { 1: '$', 2: '$$', 3: '$$$', 4: '$$$$' };
+const CUISINES = ['Colombiana','Italiana','Japonesa','Mexicana','Peruana','Hamburguesas','Pizza','Asiática','Parrilla','Mariscos','Vegetariana','Café','Postres','Bar'];
+const STORE_KEY = 'mis-lugares-v1';
+const DEFAULT_CENTER = [4.65, -74.08]; // Bogotá
+
+/* ============ Utilidades ============ */
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+const norm = s => String(s ?? '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+const today = () => { const d = new Date(); d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); return d.toISOString().slice(0, 10); };
+const fmtDate = s => { if (!s) return ''; const [y, m, d] = s.split('-'); return `${d}/${m}/${y}`; };
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(toast.t); toast.t = setTimeout(() => t.style.display = 'none', 2600); }
+function linkSource(url) {
+  const u = norm(url);
+  if (u.includes('tiktok')) return 'TikTok';
+  if (u.includes('instagram')) return 'Instagram';
+  if (u.includes('facebook') || u.includes('fb.watch')) return 'Facebook';
+  if (u.includes('youtu')) return 'YouTube';
+  return 'Enlace';
+}
+
+/* ============ Datos ============ */
+let db = { version: 1, places: [] };
+function load() {
+  try { const raw = localStorage.getItem(STORE_KEY); if (raw) { const d = JSON.parse(raw); if (d && Array.isArray(d.places)) db = d; } } catch (e) {}
+}
+function save() {
+  try { localStorage.setItem(STORE_KEY, JSON.stringify(db)); }
+  catch (e) { toast('No se pudo guardar en este navegador'); }
+}
+const getPlace = id => db.places.find(p => p.id === id);
+function visitAvg(v) {
+  const vals = Object.values(v.ratings || {}).filter(n => n > 0);
+  return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+}
+function placeAvg(p) {
+  const vals = (p.visits || []).map(visitAvg).filter(n => n != null);
+  return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+}
+function catAvg(p, cat) {
+  const vals = (p.visits || []).map(v => (v.ratings || {})[cat]).filter(n => n > 0);
+  return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+}
+function lastVisit(p) {
+  const ds = (p.visits || []).map(v => v.date).filter(Boolean).sort();
+  return ds.length ? ds[ds.length - 1] : null;
+}
+const fmtAvg = n => n == null ? '' : '★ ' + n.toFixed(1);
+
+/* ============ Fotos (se guardan en el navegador, comprimidas) ============ */
+let idb = null;
+const urlCache = new Map();
+function openIDB() {
+  return new Promise(res => {
+    try {
+      const r = indexedDB.open('mis-lugares', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('photos');
+      r.onsuccess = () => { idb = r.result; res(); };
+      r.onerror = () => res();
+      r.onblocked = () => res();
+      setTimeout(res, 1500); // si el navegador no responde, se sigue sin fotos persistentes
+    } catch (e) { res(); }
+  });
+}
+function putPhoto(id, blob) {
+  urlCache.set(id, URL.createObjectURL(blob));
+  if (!idb) return Promise.resolve();
+  return new Promise(res => { const t = idb.transaction('photos', 'readwrite'); t.objectStore('photos').put(blob, id); t.oncomplete = res; t.onerror = res; t.onabort = res; });
+}
+function getPhotoBlob(id) {
+  if (!idb) return Promise.resolve(null);
+  return new Promise(res => { const r = idb.transaction('photos').objectStore('photos').get(id); r.onsuccess = () => res(r.result || null); r.onerror = () => res(null); });
+}
+async function photoURL(id) {
+  if (urlCache.has(id)) return urlCache.get(id);
+  const b = await getPhotoBlob(id);
+  if (!b) return null;
+  const u = URL.createObjectURL(b); urlCache.set(id, u); return u;
+}
+function delPhoto(id) {
+  urlCache.delete(id);
+  if (!idb) return;
+  try { idb.transaction('photos', 'readwrite').objectStore('photos').delete(id); } catch (e) {}
+}
+function compress(file) {
+  return new Promise((res, rej) => {
+    const img = new Image(); const u = URL.createObjectURL(file);
+    img.onload = () => {
+      const s = Math.min(1, 1600 / Math.max(img.width, img.height));
+      const c = document.createElement('canvas');
+      c.width = Math.round(img.width * s); c.height = Math.round(img.height * s);
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(u);
+      c.toBlob(b => b ? res(b) : rej(new Error('blob')), 'image/jpeg', 0.8);
+    };
+    img.onerror = () => { URL.revokeObjectURL(u); rej(new Error('img')); };
+    img.src = u;
+  });
+}
+function hydratePhotos(root) {
+  root.querySelectorAll('img[data-photo]').forEach(async img => { const u = await photoURL(img.dataset.photo); if (u) img.src = u; });
+}
+const blobToDataURL = b => new Promise(res => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => res(null); r.readAsDataURL(b); });
+function dataURLToBlob(d) {
+  const [head, body] = d.split(','); const mime = (head.match(/:(.*?);/) || [, 'image/jpeg'])[1];
+  const bin = atob(body); const arr = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return new Blob([arr], { type: mime });
+}
+
+/* ============ Mapa ============ */
+let map, layer, mini, miniMarker;
+// Mapas base gratuitos y sin clave. El primero funciona también abriendo el archivo directo desde el PC.
+const TILES = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}';
+const ATTR = 'Mapa &copy; Esri y colaboradores';
+const TILES_OSM = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+const ATTR_OSM = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
+const baseLayer = () => L.tileLayer(TILES, { attribution: ATTR, maxZoom: 20, maxNativeZoom: 19 });
+const pinIcon = color => L.divIcon({ className: '', html: `<div class="pin" style="--c:${color}"></div>`, iconSize: [26, 26], iconAnchor: [13, 26] });
+function initMap() {
+  map = L.map('map').setView(DEFAULT_CENTER, 12);
+  const base = baseLayer().addTo(map);
+  const osm = L.tileLayer(TILES_OSM, { attribution: ATTR_OSM, maxZoom: 20, maxNativeZoom: 19 });
+  L.control.layers({ 'Calles': base, 'OpenStreetMap': osm }, null, { position: 'bottomleft' }).addTo(map);
+  layer = L.layerGroup().addTo(map);
+}
+function renderMarkers(places) {
+  if (!layer) return;
+  layer.clearLayers();
+  places.filter(p => p.lat != null).forEach(p => {
+    L.marker([p.lat, p.lng], { icon: pinIcon(STATUS[p.status].color), title: p.name })
+      .on('click', () => openDetail(p.id)).addTo(layer);
+  });
+}
+
+/* ============ Listado y filtros ============ */
+function fillFilters() {
+  const keep = id => $(id).value;
+  const s = keep('#fStatus'), c = keep('#fCuisine'), pr = keep('#fPrice');
+  $('#fStatus').innerHTML = '<option value="">Todos los estados</option>' + Object.entries(STATUS).map(([k, v]) => `<option value="${k}">${v.label}</option>`).join('');
+  const cuisines = [...new Set(db.places.map(p => p.cuisine).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
+  $('#fCuisine').innerHTML = '<option value="">Todas las cocinas</option>' + cuisines.map(x => `<option value="${esc(x)}">${esc(x)}</option>`).join('');
+  $('#fPrice').innerHTML = '<option value="">Todos los precios</option>' + Object.entries(PRICES).map(([k, v]) => `<option value="${k}">${v}</option>`).join('');
+  $('#fStatus').value = s; $('#fPrice').value = pr;
+  $('#fCuisine').value = cuisines.includes(c) ? c : '';
+}
+function filtered() {
+  const q = norm($('#q').value.trim());
+  const fs = $('#fStatus').value, fc = $('#fCuisine').value, fp = $('#fPrice').value, fr = $('#fRating').value, sort = $('#fSort').value;
+  const arr = db.places.filter(p => {
+    if (fs && p.status !== fs) return false;
+    if (fc && p.cuisine !== fc) return false;
+    if (fp && String(p.price || '') !== fp) return false;
+    if (fr) { const a = placeAvg(p); if (a == null || a < +fr) return false; }
+    if (q) { const hay = norm([p.name, p.cuisine, p.address, (p.tags || []).join(' '), p.notes].join(' ')); if (!hay.includes(q)) return false; }
+    return true;
+  });
+  // Los que no tienen el dato por el que se ordena van al final.
+  const byNullable = (get, dir) => (a, b) => { const x = get(a), y = get(b); if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1; return x < y ? -dir : x > y ? dir : 0; };
+  const sorters = {
+    added: (a, b) => (b.createdAt || 0) - (a.createdAt || 0),
+    recent: byNullable(lastVisit, -1),
+    oldest: byNullable(lastVisit, 1),
+    best: byNullable(placeAvg, -1),
+    worst: byNullable(placeAvg, 1),
+    name: (a, b) => a.name.localeCompare(b.name, 'es')
+  };
+  return arr.sort(sorters[sort] || sorters.added);
+}
+function cardHTML(p) {
+  const st = STATUS[p.status], avg = placeAvg(p), lv = lastVisit(p), n = (p.visits || []).length;
+  const bits = [p.cuisine, PRICES[p.price]].filter(Boolean).map(esc).join(' · ');
+  return `<div class="card" data-act="open" data-id="${p.id}">
+    <div class="row" style="justify-content:space-between"><h3>${esc(p.name)}</h3>${avg != null ? `<span class="rating">${fmtAvg(avg)}</span>` : ''}</div>
+    <div class="row"><span class="badge" style="--c:${st.color}">${st.label}</span>${p.lat == null ? '<span class="badge soft">Sin ubicar</span>' : ''}${(p.links || []).length ? `<span class="badge soft">${esc(linkSource(p.links[0]))}</span>` : ''}</div>
+    <div class="meta" style="margin-top:6px">${bits}${bits && n ? ' · ' : ''}${n ? `${n} visita${n > 1 ? 's' : ''}, última ${fmtDate(lv)}` : ''}</div>
+  </div>`;
+}
+function render() {
+  fillFilters();
+  const arr = filtered();
+  $('#count').textContent = db.places.length ? `${arr.length} de ${db.places.length} lugares` : '';
+  $('#list').innerHTML = arr.length ? arr.map(cardHTML).join('')
+    : `<div class="empty">${db.places.length ? 'Ningún lugar coincide con los filtros.' : 'Aún no tienes lugares.<br>Usa <b>＋ Lugar</b> para agregar uno, o <b>＋ Enlace</b> para guardar un video como pendiente.'}</div>`;
+  renderMarkers(arr);
+}
+
+/* ============ Ventana (ficha y formularios) ============ */
+let form = null;       // estado temporal del formulario abierto
+let visitSort = 'recent';
+function openSheet(html) {
+  if (mini) { mini.remove(); mini = null; miniMarker = null; }
+  $('#sheet').innerHTML = html; $('#overlay').classList.add('open'); $('#sheet').scrollTop = 0;
+  hydratePhotos($('#sheet'));
+}
+function closeSheet() {
+  if (mini) { mini.remove(); mini = null; miniMarker = null; }
+  $('#overlay').classList.remove('open'); $('#sheet').innerHTML = ''; form = null;
+}
+
+/* ---- Ficha ---- */
+function openDetail(id) {
+  const p = getPlace(id); if (!p) return;
+  const type = TYPES[p.type] || TYPES.restaurante, avg = placeAvg(p);
+  const visits = [...(p.visits || [])].sort({
+    recent: (a, b) => (b.date || '').localeCompare(a.date || ''),
+    oldest: (a, b) => (a.date || '').localeCompare(b.date || ''),
+    best: (a, b) => (visitAvg(b) ?? -1) - (visitAvg(a) ?? -1),
+    worst: (a, b) => (visitAvg(a) ?? 99) - (visitAvg(b) ?? 99)
+  }[visitSort]);
+  const info = [
+    p.cuisine && `<b>Cocina:</b> ${esc(p.cuisine)}`,
+    p.price && `<b>Precio:</b> ${PRICES[p.price]}`,
+    p.address && `<b>Dirección:</b> ${esc(p.address)}`,
+    p.phone && `<b>Teléfono:</b> ${esc(p.phone)}`,
+    p.web && `<b>Web:</b> <a href="${esc(p.web)}" target="_blank" rel="noopener">${esc(p.web)}</a>`,
+    (p.tags || []).length && `<b>Etiquetas:</b> ${p.tags.map(esc).join(', ')}`
+  ].filter(Boolean);
+  openSheet(`
+    <div class="sheet-head">
+      <div><h2>${esc(p.name)}</h2><div class="meta">${esc(type.label)}${avg != null ? ` · <span class="rating">${fmtAvg(avg)}</span> promedio de ${visits.length} visita${visits.length > 1 ? 's' : ''}` : ''}</div></div>
+      <button class="ghost" data-act="close">✕</button>
+    </div>
+    <div class="chips">${Object.entries(STATUS).map(([k, v]) => `<button class="chip ${p.status === k ? 'on' : ''}" style="--c:${v.color}" data-act="set-status" data-id="${p.id}" data-status="${k}">${v.label}</button>`).join('')}</div>
+    ${info.length ? `<div class="section">${info.map(x => `<div style="margin:3px 0">${x}</div>`).join('')}</div>` : ''}
+    ${avg != null ? `<div class="section"><h4>Promedio por categoría</h4><div class="cats">${type.cats.map(([k, l]) => { const a = catAvg(p, k); return `<div>${l}: <b>${a == null ? '—' : a.toFixed(1)}</b></div>`; }).join('')}</div></div>` : ''}
+    ${p.notes ? `<div class="section"><h4>Observaciones</h4><div style="white-space:pre-wrap">${esc(p.notes)}</div></div>` : ''}
+    ${(p.links || []).length ? `<div class="section"><h4>Enlaces</h4>${p.links.map(u => `<div style="margin:3px 0;word-break:break-all"><span class="badge soft">${esc(linkSource(u))}</span> <a href="${esc(u)}" target="_blank" rel="noopener">${esc(u)}</a></div>`).join('')}</div>` : ''}
+    <div class="section">
+      <div class="row" style="justify-content:space-between"><h4 style="margin:0">Visitas</h4>
+        ${visits.length > 1 ? `<select id="vSort" style="width:auto;padding:4px 8px;font-size:13px">
+          <option value="recent">Más recientes</option><option value="oldest">Más antiguas</option><option value="best">Mejor calificadas</option><option value="worst">Peor calificadas</option></select>` : ''}
+      </div>
+      ${visits.length ? visits.map(v => visitHTML(p, v, type)).join('') : '<div class="meta" style="margin-top:6px">Todavía no has registrado visitas.</div>'}
+      <div class="actions"><button class="primary" data-act="add-visit" data-id="${p.id}">＋ Registrar visita</button></div>
+    </div>
+    <div class="actions">
+      ${p.lat != null ? `<button data-act="show-map" data-id="${p.id}">Ver en el mapa</button><a href="https://www.google.com/maps/search/?api=1&query=${p.lat},${p.lng}" target="_blank" rel="noopener"><button>Cómo llegar</button></a>` : `<button data-act="edit-place" data-id="${p.id}">Marcar ubicación</button>`}
+      <button data-act="edit-place" data-id="${p.id}">Editar</button>
+      <button class="danger" data-act="del-place" data-id="${p.id}">Eliminar</button>
+    </div>`);
+  const vs = $('#vSort');
+  if (vs) { vs.value = visitSort; vs.onchange = () => { visitSort = vs.value; openDetail(id); }; }
+}
+function visitHTML(p, v, type) {
+  const a = visitAvg(v);
+  return `<div class="visit">
+    <div class="row" style="justify-content:space-between"><b>${fmtDate(v.date)}</b><span>${a != null ? `<span class="rating">${fmtAvg(a)}</span>` : ''}
+      <button class="ghost" data-act="edit-visit" data-id="${p.id}" data-vid="${v.id}">Editar</button></span></div>
+    <div class="cats">${type.cats.map(([k, l]) => `<div>${l}: <b>${(v.ratings || {})[k] || '—'}</b></div>`).join('')}</div>
+    ${v.dishes ? `<div><span class="meta">Qué pedí:</span> ${esc(v.dishes)}</div>` : ''}
+    ${v.notes ? `<div style="white-space:pre-wrap">${esc(v.notes)}</div>` : ''}
+    ${(v.photos || []).length ? `<div class="photos">${v.photos.map(id => `<img data-photo="${id}" data-act="zoom" alt="Foto de la visita">`).join('')}</div>` : ''}
+  </div>`;
+}
+
+/* ---- Formulario de lugar ---- */
+function openPlaceForm(id) {
+  const p = id ? getPlace(id) : null;
+  form = { kind: 'place', id: id || null, lat: p ? p.lat : null, lng: p ? p.lng : null };
+  const cuisines = [...new Set([...CUISINES, ...db.places.map(x => x.cuisine).filter(Boolean)])].sort((a, b) => a.localeCompare(b, 'es'));
+  openSheet(`
+    <div class="sheet-head"><h2>${p ? 'Editar lugar' : 'Nuevo lugar'}</h2><button class="ghost" data-act="close">✕</button></div>
+    <label>Nombre *</label><input id="pName" value="${esc(p?.name)}" placeholder="Nombre del restaurante">
+    <div class="grid2">
+      <div><label>Estado</label><select id="pStatus">${Object.entries(STATUS).map(([k, v]) => `<option value="${k}" ${(p?.status || 'pendiente') === k ? 'selected' : ''}>${v.label}</option>`).join('')}</select></div>
+      <div><label>Rango de precio</label><select id="pPrice"><option value="">Sin definir</option>${Object.entries(PRICES).map(([k, v]) => `<option value="${k}" ${String(p?.price || '') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></div>
+    </div>
+    <div class="grid2">
+      <div><label>Tipo de cocina</label><input id="pCuisine" list="cuisineList" value="${esc(p?.cuisine)}" placeholder="Ej. Italiana"><datalist id="cuisineList">${cuisines.map(c => `<option value="${esc(c)}">`).join('')}</datalist></div>
+      <div><label>Etiquetas (separadas por coma)</label><input id="pTags" value="${esc((p?.tags || []).join(', '))}" placeholder="brunch, terraza"></div>
+    </div>
+    <label>Ubicación</label>
+    <div class="row" style="flex-wrap:nowrap"><input id="pSearch" placeholder="Buscar por nombre o dirección"><button data-act="geo-search">Buscar</button></div>
+    <div class="results" id="pResults"></div>
+    <div id="mini"></div>
+    <div class="hint" id="pLocHint"></div>
+    <label>Dirección</label><input id="pAddress" value="${esc(p?.address)}">
+    <div class="grid2">
+      <div><label>Teléfono</label><input id="pPhone" value="${esc(p?.phone)}"></div>
+      <div><label>Página web</label><input id="pWeb" value="${esc(p?.web)}" placeholder="https://"></div>
+    </div>
+    <label>Enlaces de redes (uno por línea)</label><textarea id="pLinks" placeholder="https://www.tiktok.com/...">${esc((p?.links || []).join('\n'))}</textarea>
+    <label>Observaciones generales</label><textarea id="pNotes">${esc(p?.notes)}</textarea>
+    <div class="actions"><button class="primary" data-act="save-place">Guardar</button><button data-act="${p ? 'back' : 'close'}" data-id="${p ? p.id : ''}">Cancelar</button></div>`);
+  if (!map) { $('#mini').style.display = 'none'; $('#pLocHint').textContent = 'El mapa no está disponible aquí, así que la ubicación se marca después.'; return; }
+  const start = form.lat != null ? [form.lat, form.lng] : map.getCenter();
+  mini = L.map('mini').setView(start, form.lat != null ? 16 : Math.max(map.getZoom(), 13));
+  baseLayer().addTo(mini);
+  mini.on('click', e => setFormLocation(e.latlng.lat, e.latlng.lng, false));
+  if (form.lat != null) setFormLocation(form.lat, form.lng, false); else updateLocHint();
+  setTimeout(() => mini && mini.invalidateSize(), 60);
+}
+function setFormLocation(lat, lng, center) {
+  form.lat = lat; form.lng = lng;
+  if (!mini) return;
+  if (!miniMarker) {
+    miniMarker = L.marker([lat, lng], { draggable: true, icon: pinIcon('#c2410c') }).addTo(mini);
+    miniMarker.on('dragend', () => { const ll = miniMarker.getLatLng(); form.lat = ll.lat; form.lng = ll.lng; });
+  } else miniMarker.setLatLng([lat, lng]);
+  if (center) mini.setView([lat, lng], 17);
+  updateLocHint();
+}
+function updateLocHint() {
+  if (!mini) return;
+  $('#pLocHint').innerHTML = form.lat != null
+    ? 'Ubicación marcada. Puedes arrastrar el pin para ajustarla. <a href="#" data-act="clear-loc">Quitar ubicación</a>'
+    : 'Sin ubicación. Toca el mapa para marcarla, o búscala arriba. Puedes dejarla vacía y marcarla después.';
+}
+async function geoSearch() {
+  const q = $('#pSearch').value.trim() || $('#pName').value.trim();
+  const box = $('#pResults');
+  if (!q) { box.innerHTML = '<div class="hint">Escribe un nombre o dirección.</div>'; return; }
+  box.innerHTML = '<div class="hint">Buscando…</div>';
+  try {
+    let url = `https://nominatim.openstreetmap.org/search?format=jsonv2&limit=6&addressdetails=1&accept-language=es&q=${encodeURIComponent(q)}`;
+    if (mini) { const b = mini.getBounds().pad(2); url += `&viewbox=${b.getWest()},${b.getNorth()},${b.getEast()},${b.getSouth()}`; }
+    const res = await (await fetch(url)).json();
+    if (!form || form.kind !== 'place') return;
+    form.results = res;
+    box.innerHTML = res.length ? res.map((r, i) => `<button data-act="pick-result" data-i="${i}">${esc(r.display_name)}</button>`).join('')
+      : '<div class="hint">Sin resultados. Prueba con la dirección, o marca el punto tocando el mapa.</div>';
+  } catch (e) { box.innerHTML = '<div class="hint">No se pudo buscar ahora. Marca el punto tocando el mapa.</div>'; }
+}
+function pickResult(i) {
+  const r = form.results[i]; if (!r) return;
+  setFormLocation(+r.lat, +r.lon, true);
+  if (!$('#pName').value.trim() && r.name) $('#pName').value = r.name;
+  if (!$('#pAddress').value.trim()) {
+    const a = r.address || {};
+    $('#pAddress').value = [[a.road, a.house_number].filter(Boolean).join(' '), a.neighbourhood || a.suburb, a.city || a.town].filter(Boolean).join(', ') || r.display_name;
+  }
+  $('#pResults').innerHTML = '';
+}
+function savePlace() {
+  const name = $('#pName').value.trim();
+  if (!name) { toast('Escribe el nombre del lugar'); $('#pName').focus(); return; }
+  const data = {
+    name, status: $('#pStatus').value, price: $('#pPrice').value ? +$('#pPrice').value : null,
+    cuisine: $('#pCuisine').value.trim(), tags: $('#pTags').value.split(',').map(s => s.trim()).filter(Boolean),
+    address: $('#pAddress').value.trim(), phone: $('#pPhone').value.trim(), web: $('#pWeb').value.trim(),
+    links: $('#pLinks').value.split('\n').map(s => s.trim()).filter(Boolean), notes: $('#pNotes').value.trim(),
+    lat: form.lat, lng: form.lng, updatedAt: Date.now()
+  };
+  let p = form.id ? getPlace(form.id) : null;
+  if (!p) {
+    const dup = db.places.find(x => norm(x.name) === norm(name));
+    if (dup && !confirm(`Ya tienes un lugar llamado "${dup.name}". ¿Agregar otro igual?`)) return;
+    p = { id: uid(), type: 'restaurante', visits: [], createdAt: Date.now() }; db.places.push(p);
+  }
+  Object.assign(p, data); save(); render(); openDetail(p.id);
+}
+
+/* ---- Guardar enlace como pendiente ---- */
+function openLinkForm() {
+  form = { kind: 'link' };
+  openSheet(`
+    <div class="sheet-head"><h2>Guardar enlace</h2><button class="ghost" data-act="close">✕</button></div>
+    <div class="meta">Pega el enlace del video o publicación. Queda como <b>pendiente</b> y sin ubicar; después lo completas.</div>
+    <label>Enlace *</label><input id="lUrl" placeholder="https://www.tiktok.com/... o https://www.instagram.com/...">
+    <label>Nombre del lugar (si lo sabes)</label><input id="lName">
+    <label>Nota</label><textarea id="lNote" placeholder="Ej. el de las hamburguesas con queso fundido"></textarea>
+    <div class="actions"><button class="primary" data-act="save-link">Guardar como pendiente</button><button data-act="close">Cancelar</button></div>`);
+  $('#lUrl').focus();
+}
+function saveLink() {
+  const url = $('#lUrl').value.trim();
+  if (!/^https?:\/\/\S+$/i.test(url)) { toast('Pega un enlace válido (empieza por https://)'); return; }
+  const dup = db.places.find(p => (p.links || []).includes(url));
+  if (dup) { toast('Ese enlace ya está guardado'); openDetail(dup.id); return; }
+  const p = { id: uid(), type: 'restaurante', name: $('#lName').value.trim() || `Pendiente de ${linkSource(url)}`, status: 'pendiente',
+    cuisine: '', price: null, tags: [], address: '', phone: '', web: '', links: [url], notes: $('#lNote').value.trim(),
+    lat: null, lng: null, visits: [], createdAt: Date.now(), updatedAt: Date.now() };
+  db.places.push(p); save(); render(); closeSheet(); toast('Guardado como pendiente');
+}
+
+/* ---- Formulario de visita ---- */
+function openVisitForm(pid, vid) {
+  const p = getPlace(pid); if (!p) return;
+  const v = vid ? p.visits.find(x => x.id === vid) : null;
+  const type = TYPES[p.type] || TYPES.restaurante;
+  form = { kind: 'visit', pid, vid: vid || null, ratings: { ...(v?.ratings || {}) }, photos: [...(v?.photos || [])], removed: [] };
+  openSheet(`
+    <div class="sheet-head"><div><h2>${v ? 'Editar visita' : 'Registrar visita'}</h2><div class="meta">${esc(p.name)}</div></div><button class="ghost" data-act="close">✕</button></div>
+    <label>Fecha</label><input id="vDate" type="date" value="${v?.date || today()}">
+    <div class="section"><h4>Calificación</h4>
+      ${type.cats.map(([k, l]) => `<div class="starrow"><span>${l}</span><div class="stars" data-cat="${k}">${[1, 2, 3, 4, 5].map(n => `<button data-act="star" data-cat="${k}" data-v="${n}" class="${(form.ratings[k] || 0) >= n ? 'on' : ''}" aria-label="${n} de 5">★</button>`).join('')}</div></div>`).join('')}
+      <div class="hint">Puedes dejar una categoría sin calificar; no cuenta en el promedio. Toca la misma estrella para borrarla.</div>
+    </div>
+    <label>Qué pedí</label><input id="vDishes" value="${esc(v?.dishes)}" placeholder="Platos o bebidas">
+    <label>Observaciones</label><textarea id="vNotes">${esc(v?.notes)}</textarea>
+    <label>Fotos</label><input id="vFiles" type="file" accept="image/*" multiple>
+    <div class="photos" id="vPhotos"></div>
+    <div class="actions"><button class="primary" data-act="save-visit">Guardar visita</button><button data-act="back" data-id="${pid}">Cancelar</button>
+      ${v ? `<button class="danger" data-act="del-visit">Eliminar visita</button>` : ''}</div>`);
+  $('#vFiles').onchange = async e => {
+    for (const f of e.target.files) {
+      try { const b = await compress(f); const id = uid(); await putPhoto(id, b); form.photos.push(id); form.added = (form.added || []).concat(id); }
+      catch (err) { toast(`No se pudo leer "${f.name}"`); }
+    }
+    e.target.value = ''; renderVisitPhotos();
+  };
+  renderVisitPhotos();
+}
+function renderVisitPhotos() {
+  const box = $('#vPhotos'); if (!box) return;
+  box.innerHTML = form.photos.map(id => `<div style="position:relative"><img data-photo="${id}" alt="Foto"><button data-act="rm-photo" data-pid="${id}" style="position:absolute;top:2px;right:2px;padding:0 6px;border-radius:999px" aria-label="Quitar foto">✕</button></div>`).join('');
+  hydratePhotos(box);
+}
+function saveVisit() {
+  const p = getPlace(form.pid); if (!p) return;
+  const data = { date: $('#vDate').value || today(), ratings: form.ratings, dishes: $('#vDishes').value.trim(), notes: $('#vNotes').value.trim(), photos: form.photos };
+  let v = form.vid ? p.visits.find(x => x.id === form.vid) : null;
+  if (!v) { v = { id: uid() }; p.visits.push(v); if (p.status === 'pendiente') p.status = 'visitado'; }
+  Object.assign(v, data); p.updatedAt = Date.now();
+  form.removed.forEach(delPhoto);
+  save(); render(); openDetail(p.id);
+}
+function cancelVisitPhotos() { if (form && form.kind === 'visit') (form.added || []).forEach(delPhoto); }
+
+/* ---- Copia de seguridad ---- */
+function openMenu() {
+  form = { kind: 'menu' };
+  const nPhotos = db.places.reduce((n, p) => n + (p.visits || []).reduce((m, v) => m + (v.photos || []).length, 0), 0);
+  openSheet(`
+    <div class="sheet-head"><h2>Copia de seguridad</h2><button class="ghost" data-act="close">✕</button></div>
+    <div class="meta">Tienes ${db.places.length} lugares y ${nPhotos} fotos guardados en este navegador. Por ahora la información vive solo aquí: descarga una copia de vez en cuando.</div>
+    <div class="actions"><button class="primary" data-act="export">Descargar copia</button><button data-act="import">Restaurar desde una copia</button></div>`);
+}
+async function exportAll() {
+  const photos = {};
+  for (const p of db.places) for (const v of p.visits || []) for (const id of v.photos || []) {
+    const b = await getPhotoBlob(id); if (b) photos[id] = await blobToDataURL(b);
+  }
+  const blob = new Blob([JSON.stringify({ app: 'mis-lugares', version: 1, exportedAt: new Date().toISOString(), places: db.places, photos })], { type: 'application/json' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `luggo-${today()}.json`;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+  toast('Copia descargada');
+}
+async function importAll(file) {
+  try {
+    const d = JSON.parse(await file.text());
+    if (!d || !Array.isArray(d.places)) throw new Error('formato');
+    if (!confirm(`La copia tiene ${d.places.length} lugares. Los que ya existan se actualizan y los nuevos se agregan. ¿Continuar?`)) return;
+    for (const [id, data] of Object.entries(d.photos || {})) { try { await putPhoto(id, dataURLToBlob(data)); } catch (e) {} }
+    d.places.forEach(p => { const i = db.places.findIndex(x => x.id === p.id); if (i >= 0) db.places[i] = p; else db.places.push(p); });
+    save(); render(); closeSheet(); toast('Copia restaurada');
+  } catch (e) { toast('Ese archivo no es una copia válida'); }
+}
+
+/* ============ Eventos ============ */
+document.addEventListener('click', e => {
+  const el = e.target.closest('[data-act]'); if (!el) return;
+  const act = el.dataset.act, id = el.dataset.id;
+  switch (act) {
+    case 'tab': document.body.dataset.tab = el.dataset.tab;
+      document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b === el));
+      if (el.dataset.tab === 'map') setTimeout(() => map && map.invalidateSize(), 30); break;
+    case 'open': openDetail(id); break;
+    case 'close': cancelVisitPhotos(); closeSheet(); break;
+    case 'back': cancelVisitPhotos(); openDetail(id); break;
+    case 'add-place': openPlaceForm(null); break;
+    case 'edit-place': openPlaceForm(id); break;
+    case 'save-place': savePlace(); break;
+    case 'geo-search': geoSearch(); break;
+    case 'pick-result': pickResult(+el.dataset.i); break;
+    case 'clear-loc': e.preventDefault(); form.lat = form.lng = null; if (miniMarker) { miniMarker.remove(); miniMarker = null; } updateLocHint(); break;
+    case 'add-link': openLinkForm(); break;
+    case 'save-link': saveLink(); break;
+    case 'set-status': { const p = getPlace(id); p.status = el.dataset.status; p.updatedAt = Date.now(); save(); render(); openDetail(id); break; }
+    case 'del-place': { const p = getPlace(id);
+      if (confirm(`¿Eliminar "${p.name}" con todas sus visitas y fotos?`)) {
+        (p.visits || []).forEach(v => (v.photos || []).forEach(delPhoto));
+        db.places = db.places.filter(x => x.id !== id); save(); render(); closeSheet();
+      } break; }
+    case 'show-map': { const p = getPlace(id); closeSheet(); document.body.dataset.tab = 'map';
+      document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === 'map'));
+      setTimeout(() => { if (map) { map.invalidateSize(); map.setView([p.lat, p.lng], 17); } }, 40); break; }
+    case 'add-visit': openVisitForm(id, null); break;
+    case 'edit-visit': openVisitForm(id, el.dataset.vid); break;
+    case 'save-visit': saveVisit(); break;
+    case 'del-visit': { const p = getPlace(form.pid);
+      if (confirm('¿Eliminar esta visita?')) {
+        const v = p.visits.find(x => x.id === form.vid);
+        [...new Set([...(v.photos || []), ...form.photos])].forEach(delPhoto);
+        p.visits = p.visits.filter(x => x.id !== form.vid); save(); render(); openDetail(p.id);
+      } break; }
+    case 'star': { const cat = el.dataset.cat, v = +el.dataset.v;
+      if (form.ratings[cat] === v) delete form.ratings[cat]; else form.ratings[cat] = v;
+      el.parentElement.querySelectorAll('button').forEach(b => b.classList.toggle('on', +b.dataset.v <= (form.ratings[cat] || 0))); break; }
+    case 'rm-photo': { const pid = el.dataset.pid; form.photos = form.photos.filter(x => x !== pid);
+      if ((form.added || []).includes(pid)) delPhoto(pid); else form.removed.push(pid);
+      renderVisitPhotos(); break; }
+    case 'zoom': $('#viewer img').src = el.src; $('#viewer').classList.add('open'); break;
+    case 'menu': openMenu(); break;
+    case 'export': exportAll(); break;
+    case 'import': $('#importFile').click(); break;
+  }
+});
+$('#viewer').addEventListener('click', () => $('#viewer').classList.remove('open'));
+$('#overlay').addEventListener('mousedown', e => { if (e.target.id === 'overlay' && (!form || form.kind === 'menu' || !form.kind)) closeSheet(); });
+$('#importFile').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) importAll(f); });
+['#q', '#fStatus', '#fCuisine', '#fPrice', '#fRating', '#fSort'].forEach(s => $(s).addEventListener('input', render));
+document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id === 'pSearch') { e.preventDefault(); geoSearch(); } });
+
+/* ============ Inicio ============ */
+(async function start() {
+  load();
+  try { initMap(); }
+  catch (e) {
+    map = null; layer = null;
+    $('#map').innerHTML = '<div class="empty" style="padding-top:80px"><b>El mapa no pudo cargarse aquí.</b><br>Esto pasa en la vista previa del chat o sin internet.<br>Descarga el archivo y ábrelo en Chrome, Edge o Safari.<br>El listado y el registro sí funcionan.</div>';
+  }
+  render();          // el listado aparece de inmediato
+  await openIDB();   // las fotos se conectan después, sin bloquear el mapa
+  hydratePhotos(document.body);
+  const pts = db.places.filter(p => p.lat != null).map(p => [p.lat, p.lng]);
+  if (map && pts.length) map.fitBounds(pts, { padding: [40, 40], maxZoom: 15 });
+})();
+</script>
+</body>
+</html>
