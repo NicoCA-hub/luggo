@@ -6,6 +6,11 @@
 <title>LUGGO</title>
 <meta name="apple-mobile-web-app-title" content="LUGGO">
 <meta name="application-name" content="LUGGO">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#c2410c">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="icon" href="icon.png">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <style>
@@ -85,6 +90,10 @@ a{color:var(--accent)}
 #viewer{position:fixed;inset:0;background:rgba(0,0,0,.88);display:none;z-index:2000;align-items:center;justify-content:center;cursor:zoom-out}
 #viewer.open{display:flex}
 #viewer img{max-width:96%;max-height:96%}
+#cloudBtn{position:relative;padding:8px 11px}
+#cloudBtn::after{content:'';position:absolute;right:4px;bottom:4px;width:10px;height:10px;border-radius:50%;background:var(--dot,#8a8f98);border:2px solid #fff}
+#cloudBtn.spin::after{animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:.25}}
 #toast{position:fixed;left:50%;bottom:76px;transform:translateX(-50%);background:#1f2328;color:#fff;padding:8px 14px;border-radius:8px;font-size:14px;display:none;z-index:3000}
 
 @media (max-width:800px){
@@ -108,7 +117,8 @@ a{color:var(--accent)}
   <input id="q" type="search" placeholder="Buscar por nombre, cocina o etiqueta">
   <button data-act="add-link" title="Guardar un enlace de TikTok o Instagram">＋ <span class="lbl">Enlace</span>🔗</button>
   <button class="primary" data-act="add-place">＋ <span class="lbl">Lugar</span>📍</button>
-  <button data-act="menu" title="Copia de seguridad">⋯</button>
+  <button id="cloudBtn" data-act="cloud" title="Google Drive">☁️</button>
+  <button data-act="menu" title="Drive y copia de seguridad">⋯</button>
 </header>
 <main>
   <aside id="panel">
@@ -182,15 +192,25 @@ function linkSource(url) {
   return 'Enlace';
 }
 
+const ls = {
+  get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch (e) {} },
+  del(k) { try { localStorage.removeItem(k); } catch (e) {} }
+};
+
 /* ============ Datos ============ */
-let db = { version: 1, places: [] };
+// places: los lugares. deleted: lugares borrados (para que el borrado llegue a los otros dispositivos).
+// photos: qué archivo de Drive corresponde a cada foto.
+let db = { version: 1, places: [], deleted: {}, photos: {} };
 function load() {
-  try { const raw = localStorage.getItem(STORE_KEY); if (raw) { const d = JSON.parse(raw); if (d && Array.isArray(d.places)) db = d; } } catch (e) {}
+  try { const raw = ls.get(STORE_KEY); if (raw) { const d = JSON.parse(raw); if (d && Array.isArray(d.places)) db = d; } } catch (e) {}
+  db.deleted = db.deleted || {}; db.photos = db.photos || {};
 }
-function save() {
+function saveLocal() {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(db)); }
   catch (e) { toast('No se pudo guardar en este navegador'); }
 }
+function save() { saveLocal(); scheduleSync(); }
 const getPlace = id => db.places.find(p => p.id === id);
 function visitAvg(v) {
   const vals = Object.values(v.ratings || {}).filter(n => n > 0);
@@ -237,6 +257,11 @@ function getPhotoBlob(id) {
 async function photoURL(id) {
   if (urlCache.has(id)) return urlCache.get(id);
   const b = await getPhotoBlob(id);
+  if (!b && db.photos[id] && tokenOk()) {
+    // La foto se tomó en otro dispositivo: se baja de Drive y se guarda aquí.
+    try { const d = await (await drive(`files/${db.photos[id]}?alt=media`)).blob(); await putPhoto(id, d); return urlCache.get(id); }
+    catch (e) { if (e instanceof AuthError) setCloud('auth'); return null; }
+  }
   if (!b) return null;
   const u = URL.createObjectURL(b); urlCache.set(id, u); return u;
 }
@@ -364,6 +389,7 @@ function closeSheet() {
 /* ---- Ficha ---- */
 function openDetail(id) {
   const p = getPlace(id); if (!p) return;
+  form = null; // la ficha no es un formulario: cerrarla no debe deshacer nada
   const type = TYPES[p.type] || TYPES.restaurante, avg = placeAvg(p);
   const visits = [...(p.visits || [])].sort({
     recent: (a, b) => (b.date || '').localeCompare(a.date || ''),
@@ -586,9 +612,12 @@ function openMenu() {
   form = { kind: 'menu' };
   const nPhotos = db.places.reduce((n, p) => n + (p.visits || []).reduce((m, v) => m + (v.photos || []).length, 0), 0);
   openSheet(`
-    <div class="sheet-head"><h2>Copia de seguridad</h2><button class="ghost" data-act="close">✕</button></div>
-    <div class="meta">Tienes ${db.places.length} lugares y ${nPhotos} fotos guardados en este navegador. Por ahora la información vive solo aquí: descarga una copia de vez en cuando.</div>
-    <div class="actions"><button class="primary" data-act="export">Descargar copia</button><button data-act="import">Restaurar desde una copia</button></div>`);
+    <div class="sheet-head"><h2>LUGGO</h2><button class="ghost" data-act="close">✕</button></div>
+    <div class="section"><h4>Google Drive</h4>${driveMenuHTML()}</div>
+    <div class="section"><h4>Copia de seguridad</h4>
+      <div class="meta">Tienes ${db.places.length} lugares y ${nPhotos} fotos. La copia es un archivo con todo, por si algún día lo necesitas.</div>
+      <div class="actions"><button data-act="export">Descargar copia</button><button data-act="import">Restaurar desde una copia</button></div>
+    </div>`);
 }
 async function exportAll() {
   const photos = {};
@@ -606,10 +635,203 @@ async function importAll(file) {
     if (!d || !Array.isArray(d.places)) throw new Error('formato');
     if (!confirm(`La copia tiene ${d.places.length} lugares. Los que ya existan se actualizan y los nuevos se agregan. ¿Continuar?`)) return;
     for (const [id, data] of Object.entries(d.photos || {})) { try { await putPhoto(id, dataURLToBlob(data)); } catch (e) {} }
-    d.places.forEach(p => { const i = db.places.findIndex(x => x.id === p.id); if (i >= 0) db.places[i] = p; else db.places.push(p); });
+    d.places.forEach(p => { p.updatedAt = Date.now(); delete db.deleted[p.id]; const i = db.places.findIndex(x => x.id === p.id); if (i >= 0) db.places[i] = p; else db.places.push(p); });
     save(); render(); closeSheet(); toast('Copia restaurada');
   } catch (e) { toast('Ese archivo no es una copia válida'); }
 }
+
+/* ============ Google Drive ============ */
+// El inicio de sesión va a la página de Google y vuelve aquí (funciona en el PC y en la app del iPhone).
+// El permiso drive.file solo deja ver los archivos que LUGGO crea, no el resto de tu Drive.
+const GOOGLE_CLIENT_ID = '787708694602-cn37dhoi1fhdbkmfb2f0b199ennv9rdu.apps.googleusercontent.com';
+const APP_URL = 'https://nicoca-hub.github.io/luggo/';
+const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+const AUTH_KEY = 'luggo-auth', CONN_KEY = 'luggo-conectado', IDS_KEY = 'luggo-drive-ids', SYNC_KEY = 'luggo-ultima-sync';
+const onAppSite = () => location.origin + location.pathname.replace(/index\.html$/, '') === APP_URL;
+class AuthError extends Error {}
+
+let auth = null; try { auth = JSON.parse(ls.get(AUTH_KEY)); } catch (e) {}
+const tokenOk = () => !!(auth && auth.token && auth.exp > Date.now() + 60000);
+let ids = {}; try { ids = JSON.parse(ls.get(IDS_KEY)) || {}; } catch (e) {}
+let cloud = 'off', cloudMsg = '';
+
+const CLOUD_LOOK = {
+  off:     ['#8a8f98', 'Google Drive sin conectar'],
+  sync:    ['#2b6cb0', 'Sincronizando con Drive…'],
+  ok:      ['#2f855a', 'Todo guardado en Drive'],
+  auth:    ['#d98a00', 'La sesión de Drive venció: toca para reconectar'],
+  error:   ['#b42318', 'No se pudo sincronizar con Drive'],
+  offline: ['#8a8f98', 'Sin internet: se guarda en este dispositivo y se sube después']
+};
+function setCloud(state, msg) {
+  cloud = state; cloudMsg = msg || '';
+  const b = $('#cloudBtn'); if (!b) return;
+  b.style.setProperty('--dot', CLOUD_LOOK[state][0]);
+  b.title = CLOUD_LOOK[state][1];
+  b.classList.toggle('spin', state === 'sync');
+  if (form && form.kind === 'menu') { const box = $('#driveBox'); if (box) box.outerHTML = driveMenuHTML(); }
+}
+function driveMenuHTML() {
+  const last = +ls.get(SYNC_KEY);
+  const when = last ? new Date(last).toLocaleString('es-CO', { dateStyle: 'short', timeStyle: 'short' }) : 'nunca';
+  const connected = !!ls.get(CONN_KEY);
+  return `<div id="driveBox">
+    <div class="meta">${CLOUD_LOOK[cloud][1]}${cloudMsg ? ` (${esc(cloudMsg)})` : ''}. Última sincronización: ${when}</div>
+    <div class="actions">${connected
+      ? `<button class="primary" data-act="cloud">${cloud === 'auth' ? 'Reconectar' : 'Sincronizar ahora'}</button><button data-act="logout">Desconectar</button>`
+      : `<button class="primary" data-act="login">Conectar Google Drive</button>`}</div>
+    <div class="hint">LUGGO crea en tu Drive una carpeta "LUGGO" con tus datos y una subcarpeta con las fotos. Si editas en dos dispositivos el mismo lugar, se queda el cambio más reciente.</div>
+  </div>`;
+}
+
+function startLogin(silent) {
+  if (!onAppSite()) { toast('Drive solo funciona en la versión publicada de LUGGO'); return; }
+  const state = uid();
+  ls.set('luggo-oauth-state', state); ls.set('luggo-oauth-silent', silent ? '1' : '');
+  const q = new URLSearchParams({ client_id: GOOGLE_CLIENT_ID, redirect_uri: APP_URL, response_type: 'token',
+    scope: DRIVE_SCOPE, include_granted_scopes: 'true', state });
+  if (silent) q.set('prompt', 'none');
+  location.href = 'https://accounts.google.com/o/oauth2/v2/auth?' + q;
+}
+// Lee la respuesta de Google al volver del inicio de sesión.
+function readLoginResult() {
+  if (!/[#&]state=/.test(location.hash)) return null;
+  const h = new URLSearchParams(location.hash.slice(1));
+  history.replaceState(null, '', location.pathname + location.search);
+  const expected = ls.get('luggo-oauth-state'), silent = !!ls.get('luggo-oauth-silent');
+  ls.del('luggo-oauth-state'); ls.del('luggo-oauth-silent');
+  if (!expected || h.get('state') !== expected) return null;
+  if (h.get('error') || !h.get('access_token')) return silent ? 'silent-fail' : 'error';
+  if (!(h.get('scope') || '').split(' ').includes(DRIVE_SCOPE)) return 'noscope';
+  auth = { token: h.get('access_token'), exp: Date.now() + (+h.get('expires_in') || 3600) * 1000 };
+  ls.set(AUTH_KEY, JSON.stringify(auth)); ls.set(CONN_KEY, '1');
+  return silent ? 'silent-ok' : 'ok';
+}
+async function logout() {
+  if (auth && auth.token) {
+    try { await fetch('https://oauth2.googleapis.com/revoke?token=' + encodeURIComponent(auth.token), { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }); } catch (e) {}
+  }
+  auth = null; ids = {};
+  [AUTH_KEY, CONN_KEY, IDS_KEY, SYNC_KEY].forEach(k => ls.del(k));
+  setCloud('off'); toast('Drive desconectado. Tus datos siguen en este dispositivo y en tu Drive.');
+}
+
+async function drive(url, opts = {}) {
+  if (!tokenOk()) throw new AuthError('sesión vencida');
+  const full = url.startsWith('https://') ? url : 'https://www.googleapis.com/drive/v3/' + url;
+  const r = await fetch(full, { ...opts, headers: { Authorization: 'Bearer ' + auth.token, ...(opts.headers || {}) } });
+  if (r.status === 401) { auth = null; ls.del(AUTH_KEY); throw new AuthError('sesión vencida'); }
+  if (!r.ok) { const e = new Error('Drive respondió ' + r.status); e.status = r.status; throw e; }
+  return r;
+}
+async function findByTag(tag) {
+  const q = `appProperties has { key='luggo' and value='${tag}' } and trashed=false`;
+  const r = await (await drive(`files?q=${encodeURIComponent(q)}&fields=files(id)&spaces=drive`)).json();
+  return (r.files && r.files[0]) ? r.files[0].id : null;
+}
+async function createFolder(name, tag, parent) {
+  const meta = { name, mimeType: 'application/vnd.google-apps.folder', appProperties: { luggo: tag } };
+  if (parent) meta.parents = [parent];
+  const r = await drive('files?fields=id', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(meta) });
+  return (await r.json()).id;
+}
+async function upload(meta, blob, fileId) {
+  const fd = new FormData();
+  fd.append('metadata', new Blob([JSON.stringify(meta)], { type: 'application/json' }));
+  fd.append('file', blob);
+  const base = 'https://www.googleapis.com/upload/drive/v3/files';
+  const r = await drive(fileId ? `${base}/${fileId}?uploadType=multipart&fields=id` : `${base}?uploadType=multipart&fields=id`,
+    { method: fileId ? 'PATCH' : 'POST', body: fd });
+  return (await r.json()).id;
+}
+async function driveFolders() {
+  if (!ids.root) ids.root = await findByTag('root') || await createFolder('LUGGO', 'root');
+  if (!ids.photos) ids.photos = await findByTag('photos') || await createFolder('Fotos', 'photos', ids.root);
+  if (!ids.data) ids.data = await findByTag('data');
+  ls.set(IDS_KEY, JSON.stringify(ids));
+  return ids;
+}
+function referencedPhotos() {
+  const s = new Set();
+  db.places.forEach(p => (p.visits || []).forEach(v => (v.photos || []).forEach(id => s.add(id))));
+  return s;
+}
+function photoName(id) {
+  for (const p of db.places) for (const v of p.visits || []) if ((v.photos || []).includes(id)) return `${p.name} ${v.date || ''} ${id}.jpg`.replace(/[\\/:*?"<>|]/g, '');
+  return id + '.jpg';
+}
+// Junta lo de Drive con lo de este dispositivo: por cada lugar se queda la versión editada más recientemente.
+function mergeInto(remote) {
+  const deleted = { ...(remote.deleted || {}) };
+  for (const [k, t] of Object.entries(db.deleted)) deleted[k] = Math.max(t, deleted[k] || 0);
+  const byId = new Map();
+  for (const p of [...(remote.places || []), ...db.places]) {
+    const cur = byId.get(p.id);
+    if (!cur || (p.updatedAt || 0) >= (cur.updatedAt || 0)) byId.set(p.id, p);
+  }
+  db.places = [...byId.values()].filter(p => !(deleted[p.id] >= (p.updatedAt || 0)));
+  db.deleted = deleted;
+  db.photos = { ...(remote.photos || {}), ...db.photos };
+}
+
+let syncing = false, syncAgain = false, syncTimer = null;
+function scheduleSync(ms = 1500) {
+  clearTimeout(syncTimer);
+  if (tokenOk()) syncTimer = setTimeout(sync, ms);
+  else if (ls.get(CONN_KEY)) setCloud('auth');
+}
+async function sync(isRetry) {
+  if (syncing) { syncAgain = true; return; }
+  if (!navigator.onLine) { setCloud('offline'); return; }
+  if (!tokenOk()) { setCloud(ls.get(CONN_KEY) ? 'auth' : 'off'); return; }
+  syncing = true; setCloud('sync');
+  try {
+    const d = await driveFolders();
+    let remote = null;
+    if (d.data) remote = await (await drive(`files/${d.data}?alt=media`)).json();
+    if (remote && Array.isArray(remote.places)) mergeInto(remote);
+    // 1. Subir fotos nuevas
+    for (const id of referencedPhotos()) {
+      if (db.photos[id]) continue;
+      const blob = await getPhotoBlob(id); if (!blob) continue;
+      db.photos[id] = await upload({ name: photoName(id), parents: [d.photos], appProperties: { luggo: 'photo', pid: id } }, blob);
+    }
+    // 2. Mandar a la papelera de Drive las fotos que ya no usa ningún lugar
+    const used = referencedPhotos();
+    for (const [pid, fid] of Object.entries(db.photos)) {
+      if (used.has(pid)) continue;
+      try { await drive(`files/${fid}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trashed: true }) }); }
+      catch (e) { if (e instanceof AuthError) throw e; }
+      delete db.photos[pid];
+    }
+    saveLocal();
+    // 3. Subir los datos si cambiaron
+    const body = JSON.stringify(db);
+    if (!remote || body !== JSON.stringify(remote)) {
+      const blob = new Blob([body], { type: 'application/json' });
+      ids.data = await upload(d.data ? {} : { name: 'luggo-datos.json', parents: [d.root], appProperties: { luggo: 'data' } }, blob, d.data);
+      ls.set(IDS_KEY, JSON.stringify(ids));
+    }
+    ls.set(SYNC_KEY, String(Date.now()));
+    syncing = false; setCloud('ok');
+    render(); hydratePhotos(document.body);
+  } catch (e) {
+    syncing = false;
+    if (e instanceof AuthError) setCloud('auth');
+    else if (e.status === 404 && !isRetry) { ids = {}; ls.del(IDS_KEY); return sync(true); } // la carpeta se borró o es otra cuenta
+    else setCloud(navigator.onLine ? 'error' : 'offline', e.message);
+  }
+  if (syncAgain) { syncAgain = false; sync(); }
+}
+function cloudClick() {
+  if (!onAppSite()) { toast('Drive solo funciona en la versión publicada de LUGGO'); return; }
+  if (!navigator.onLine) { setCloud('offline'); toast('Sin internet. Se guarda aquí y se sube cuando vuelva la conexión.'); return; }
+  if (!tokenOk()) { startLogin(false); return; }
+  toast('Sincronizando…'); sync();
+}
+document.addEventListener('visibilitychange', () => { if (!document.hidden && tokenOk()) scheduleSync(300); });
+window.addEventListener('online', () => scheduleSync(300));
+window.addEventListener('offline', () => setCloud('offline'));
 
 /* ============ Eventos ============ */
 document.addEventListener('click', e => {
@@ -634,7 +856,7 @@ document.addEventListener('click', e => {
     case 'del-place': { const p = getPlace(id);
       if (confirm(`¿Eliminar "${p.name}" con todas sus visitas y fotos?`)) {
         (p.visits || []).forEach(v => (v.photos || []).forEach(delPhoto));
-        db.places = db.places.filter(x => x.id !== id); save(); render(); closeSheet();
+        db.places = db.places.filter(x => x.id !== id); db.deleted[id] = Date.now(); save(); render(); closeSheet();
       } break; }
     case 'show-map': { const p = getPlace(id); closeSheet(); document.body.dataset.tab = 'map';
       document.querySelectorAll('.tabs button').forEach(b => b.classList.toggle('on', b.dataset.tab === 'map'));
@@ -646,7 +868,7 @@ document.addEventListener('click', e => {
       if (confirm('¿Eliminar esta visita?')) {
         const v = p.visits.find(x => x.id === form.vid);
         [...new Set([...(v.photos || []), ...form.photos])].forEach(delPhoto);
-        p.visits = p.visits.filter(x => x.id !== form.vid); save(); render(); openDetail(p.id);
+        p.visits = p.visits.filter(x => x.id !== form.vid); p.updatedAt = Date.now(); save(); render(); openDetail(p.id);
       } break; }
     case 'star': { const cat = el.dataset.cat, v = +el.dataset.v;
       if (form.ratings[cat] === v) delete form.ratings[cat]; else form.ratings[cat] = v;
@@ -656,6 +878,9 @@ document.addEventListener('click', e => {
       renderVisitPhotos(); break; }
     case 'zoom': $('#viewer img').src = el.src; $('#viewer').classList.add('open'); break;
     case 'menu': openMenu(); break;
+    case 'cloud': cloudClick(); break;
+    case 'login': startLogin(false); break;
+    case 'logout': logout(); break;
     case 'export': exportAll(); break;
     case 'import': $('#importFile').click(); break;
   }
@@ -669,6 +894,12 @@ document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id
 /* ============ Inicio ============ */
 (async function start() {
   load();
+  const login = readLoginResult();
+  // Si ya habías conectado Drive y la sesión venció, se renueva sola (va a Google y vuelve en un segundo).
+  if (!login && !tokenOk() && ls.get(CONN_KEY) && onAppSite() && navigator.onLine) {
+    const last = +ls.get('luggo-auto-login') || 0;
+    if (Date.now() - last > 10 * 60000) { ls.set('luggo-auto-login', String(Date.now())); startLogin(true); return; }
+  }
   try { initMap(); }
   catch (e) {
     map = null; layer = null;
@@ -679,6 +910,10 @@ document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.id
   hydratePhotos(document.body);
   const pts = db.places.filter(p => p.lat != null).map(p => [p.lat, p.lng]);
   if (map && pts.length) map.fitBounds(pts, { padding: [40, 40], maxZoom: 15 });
+  if (login === 'ok') toast('Google Drive conectado');
+  else if (login === 'noscope') toast('Para guardar en Drive, marca el permiso de Google Drive al iniciar sesión');
+  else if (login === 'error') toast('No se pudo conectar con Google Drive');
+  if (tokenOk()) sync(); else setCloud(ls.get(CONN_KEY) ? 'auth' : 'off');
 })();
 </script>
 </body>
